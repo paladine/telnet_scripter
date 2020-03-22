@@ -11,11 +11,13 @@ To execute tests, run `bazel test //javatests/com/jeffreys/telnet:all`
 
 ## How to execute?
 `java -jar TelnetScripter_deploy.jar <arguments>`
-  * --remote_host=remote host to connect to
-  * --remote_port=remote port to connect to, default 23
-  * --local_port=local port to listen on, default 2112
+  * `--remote_host=remote host to connect to`
+  * `--remote_port=remote port to connect to, default 23`
+  * `--local_port=local port to listen on, default 2112`
   
 You can also run out of the repo directory, `bazel run //java/com/jeffreys/telnet:TelnetScript -- <arguments>`
+
+Now telnet to your localhost on the `--local_port` value, and you'll be connected to the `--remote_host`
 
 ## How do you run a script?
 Once you're connected to a system, you just type in the magic command `#!script <script_path>` and hit enter. It should launch the script file with the telnet connection as stdin and any writes to stdout will go to the telnet host.
