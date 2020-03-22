@@ -158,8 +158,8 @@ final class TelnetConnection {
         Runnable onClose) {
       this.from = checkNotNull(from);
       this.to = checkNotNull(to);
-      this.onDataReceived = onDataReceived;
-      this.onClose = onClose;
+      this.onDataReceived = checkNotNull(onDataReceived);
+      this.onClose = checkNotNull(onClose);
     }
 
     @Override
