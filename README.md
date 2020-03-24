@@ -38,3 +38,6 @@ done
 
 ## How to stop your script?
 Just kill the script process in your OS. You cannot stop it via special text commands.
+
+## Why Java?
+For maximum cross platform support. You can run this on Windows, Linux, Raspberry Pi, etc.
