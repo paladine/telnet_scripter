@@ -1,7 +1,6 @@
 package com.jeffreys.telnet;
 
 import static com.google.common.truth.Truth.assertThat;
-import static com.google.common.util.concurrent.Uninterruptibles.sleepUninterruptibly;
 import static com.jeffreys.junit.Exceptions.assertThrows;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.argThat;
@@ -63,18 +62,11 @@ public class TelnetConnectionTest {
     // --------------------------------------------------------------------------------------------
     // ARRANGE
     // --------------------------------------------------------------------------------------------
-    MessageQueue<QueueMessage> threadMessageQueue = new MessageQueue<>();
     Process process = mock(Process.class);
     when(process.getInputStream()).thenReturn(new ByteArrayInputStream(new byte[0]));
     when(process.getOutputStream()).thenReturn(new ByteArrayOutputStream());
     ProcessLauncher processLauncher = mock(ProcessLauncher.class);
-    when(processLauncher.start(any(ProcessBuilder.class)))
-        .thenAnswer(
-            invocationOnMock -> {
-              // signal back to the test thread that the mock has been invoked
-              threadMessageQueue.post(QueueMessage.create());
-              return process;
-            });
+    when(processLauncher.start(any(ProcessBuilder.class))).thenReturn(process);
 
     MessageQueue<QueueMessage> remoteQueue = new MessageQueue<>();
     MessageQueue<QueueMessage> hostQueue = new MessageQueue<>();
@@ -87,35 +79,38 @@ public class TelnetConnectionTest {
         new TestCloseableStreamer(
             closeLatch,
             new BlockingLineInputStream(
-                "Welcome to the BBS!\r\n"
-                    + "Would you like to launch a script?\r\n"
-                    + "#!script /tmp/test.sh\r\n",
+                "Welcome to the BBS!\r\nWould you like to launch a script?\r\nand another\r\n",
                 remoteQueue),
             new CloseableOutputStream(remoteOutputStream, closeLatch));
     TestCloseableStreamer host =
         new TestCloseableStreamer(
             closeLatch,
-            new BlockingLineInputStream("you typed this\r\n", hostQueue),
+            new BlockingLineInputStream("you typed this\r\n#!script /tmp/test.sh\r\none more\r\n", hostQueue),
             new CloseableOutputStream(hostOutputStream, closeLatch));
     TelnetConnection telnetConnection = new TelnetConnection(host, remote, processLauncher);
+
+    CountDownLatch scriptLatch = new CountDownLatch(2);
+    telnetConnection.setOnPostHostDataReceived((buffer, bytes) -> scriptLatch.countDown());
 
     // --------------------------------------------------------------------------------------------
     // ACT
     // --------------------------------------------------------------------------------------------
     telnetConnection.start();
 
-    // 3 lines from remote, release them all
+    // 2 lines from remote, release them all
     remoteQueue.post(QueueMessage.create());
     remoteQueue.post(QueueMessage.create());
-    remoteQueue.post(QueueMessage.create());
-    // release the line from host "you typed this"
+    // release the lines from host
+    hostQueue.post(QueueMessage.create());
     hostQueue.post(QueueMessage.create());
 
     // wait for the script to launch
-    threadMessageQueue.get(Duration.ofSeconds(5));
+    assertThat(scriptLatch.await(5000, TimeUnit.MILLISECONDS)).isTrue();
 
     // release them both to finish up
     remoteQueue.post(QueueMessage.create());
+    remoteQueue.post(QueueMessage.create());
+    hostQueue.post(QueueMessage.create());
     hostQueue.post(QueueMessage.create());
 
     // wait for the streams to be closed
@@ -124,12 +119,12 @@ public class TelnetConnectionTest {
     // --------------------------------------------------------------------------------------------
     // ASSERT
     // --------------------------------------------------------------------------------------------
-    assertThat(remoteOutputStream.toString()).isEqualTo("you typed this\r\n");
+    assertThat(remoteOutputStream.toString()).isEqualTo("you typed this\r\n#!script /tmp/test.sh\r\none more\r\n");
     assertThat(hostOutputStream.toString())
         .isEqualTo(
             "Welcome to the BBS!\r\n"
                 + "Would you like to launch a script?\r\n"
-                + "#!script /tmp/test.sh\r\n");
+                + "and another\r\n");
     verify(processLauncher)
         .start(argThat(processBuilder -> processBuilder.command().contains("/tmp/test.sh")));
   }
@@ -140,20 +135,13 @@ public class TelnetConnectionTest {
     // ARRANGE
     // --------------------------------------------------------------------------------------------
     MessageQueue<QueueMessage> processQueue = new MessageQueue<>();
-    MessageQueue<QueueMessage> threadMessageQueue = new MessageQueue<>();
     Process process = mock(Process.class);
     when(process.getInputStream())
         .thenReturn(
             new BlockingLineInputStream("commands\r\nfrom the\r\nscript\r\n", processQueue));
     when(process.getOutputStream()).thenReturn(new ByteArrayOutputStream());
     ProcessLauncher processLauncher = mock(ProcessLauncher.class);
-    when(processLauncher.start(any(ProcessBuilder.class)))
-        .thenAnswer(
-            invocationOnMock -> {
-              // signal back to the test thread that the mock has been invoked
-              threadMessageQueue.post(QueueMessage.create());
-              return process;
-            });
+    when(processLauncher.start(any(ProcessBuilder.class))).thenReturn(process);
 
     MessageQueue<QueueMessage> remoteQueue = new MessageQueue<>();
     MessageQueue<QueueMessage> hostQueue = new MessageQueue<>();
@@ -165,44 +153,42 @@ public class TelnetConnectionTest {
     TestCloseableStreamer remote =
         new TestCloseableStreamer(
             closeLatch,
-            new BlockingLineInputStream(
-                "Welcome to the BBS!\r\n"
-                    + "#!script /tmp/first.sh\r\n"
-                    + "#!script /tmp/second.sh\r\n",
-                remoteQueue),
+            new BlockingLineInputStream("Welcome to the BBS!\r\n",remoteQueue),
             new CloseableOutputStream(remoteOutputStream, closeLatch));
     TestCloseableStreamer host =
         new TestCloseableStreamer(
             closeLatch,
-            new BlockingLineInputStream("you typed this\r\n", hostQueue),
+            new BlockingLineInputStream("you typed this\r\n#!script /tmp/first.sh\r\n#!script /tmp/second.sh\r\n", hostQueue),
             new CloseableOutputStream(hostOutputStream, closeLatch));
     TelnetConnection telnetConnection = new TelnetConnection(host, remote, processLauncher);
+
+    CountDownLatch firstScriptLatch = new CountDownLatch(2);
+    CountDownLatch secondScriptLatch = new CountDownLatch(3);
+    telnetConnection.setOnPostHostDataReceived((buffer, bytes) -> {
+      firstScriptLatch.countDown();
+      secondScriptLatch.countDown();
+    });
 
     // --------------------------------------------------------------------------------------------
     // ACT
     // --------------------------------------------------------------------------------------------
     telnetConnection.start();
 
-    // 3 lines from remote, release first two to launch script
+    // 1 lines from remote, release first one
     remoteQueue.post(QueueMessage.create());
-    remoteQueue.post(QueueMessage.create());
-    // don't release the line from host "you typed this"
-    // hostQueue.post(QueueMessage.create());
+    // release the lines launching the first script
+    hostQueue.post(QueueMessage.create());
+    hostQueue.post(QueueMessage.create());
 
     // wait for the script to launch
-    threadMessageQueue.get(Duration.ofSeconds(5));
-
+    assertThat(firstScriptLatch.await(5000, TimeUnit.MILLISECONDS)).isTrue();
     // release the next script line which attempts to start the second script
-    remoteQueue.post(QueueMessage.create());
-
-    // TODO we need to let the remote queue process the message and attempt to launch
-    // the script right here. But I can't think of a nice way to do it let's just sleep, lol
-    sleepUninterruptibly(Duration.ofMillis(250));
+    hostQueue.post(QueueMessage.create());
+    // wait for the second script to be detected and attempted to launch
+    assertThat(secondScriptLatch.await(5000, TimeUnit.MILLISECONDS)).isTrue();
 
     // flush all the streams now
     remoteQueue.post(QueueMessage.create());
-    remoteQueue.post(QueueMessage.create());
-    hostQueue.post(QueueMessage.create());
     hostQueue.post(QueueMessage.create());
 
     // wait for the streams to be closed
@@ -211,12 +197,8 @@ public class TelnetConnectionTest {
     // --------------------------------------------------------------------------------------------
     // ASSERT
     // --------------------------------------------------------------------------------------------
-    assertThat(remoteOutputStream.toString()).isEqualTo("you typed this\r\n");
-    assertThat(hostOutputStream.toString())
-        .isEqualTo(
-            "Welcome to the BBS!\r\n"
-                + "#!script /tmp/first.sh\r\n"
-                + "#!script /tmp/second.sh\r\n");
+    assertThat(remoteOutputStream.toString()).isEqualTo("you typed this\r\n#!script /tmp/first.sh\r\n#!script /tmp/second.sh\r\n");
+    assertThat(hostOutputStream.toString()).isEqualTo("Welcome to the BBS!\r\n");
     verify(processLauncher)
         .start(argThat(processBuilder -> processBuilder.command().contains("/tmp/first.sh")));
     verify(processLauncher, times(1)).start(any());
@@ -228,7 +210,6 @@ public class TelnetConnectionTest {
     // ARRANGE
     // --------------------------------------------------------------------------------------------
     CountDownLatch processCloseLatch = new CountDownLatch(1);
-    MessageQueue<QueueMessage> threadMessageQueue = new MessageQueue<>();
     MessageQueue<QueueMessage> processQueue = new MessageQueue<>();
     ByteArrayOutputStream processOutputStream = new ByteArrayOutputStream();
     Process process = mock(Process.class);
@@ -238,13 +219,7 @@ public class TelnetConnectionTest {
     when(process.getOutputStream())
         .thenReturn(new CloseableOutputStream(processOutputStream, processCloseLatch));
     ProcessLauncher processLauncher = mock(ProcessLauncher.class);
-    when(processLauncher.start(any(ProcessBuilder.class)))
-        .thenAnswer(
-            invocationOnMock -> {
-              // signal back to the test thread that the mock has been invoked
-              threadMessageQueue.post(QueueMessage.create());
-              return process;
-            });
+    when(processLauncher.start(any(ProcessBuilder.class))).thenReturn(process);
 
     MessageQueue<QueueMessage> remoteQueue = new MessageQueue<>();
     MessageQueue<QueueMessage> hostQueue = new MessageQueue<>();
@@ -256,33 +231,35 @@ public class TelnetConnectionTest {
     TestCloseableStreamer remote =
         new TestCloseableStreamer(
             closeLatch,
-            new BlockingLineInputStream(
-                "Welcome to the BBS!\r\n"
-                    + "Would you like to launch a script?\r\n"
-                    + "#!script /tmp/test.sh\r\n",
-                remoteQueue),
+            new BlockingLineInputStream("Welcome to the BBS!\r\n", remoteQueue),
             new CloseableOutputStream(remoteOutputStream, closeLatch));
     TestCloseableStreamer host =
         new TestCloseableStreamer(
             closeLatch,
-            new BlockingLineInputStream("you typed this\r\n", hostQueue),
+            new BlockingLineInputStream("you typed this\r\n#!script /tmp/test.sh\r\n", hostQueue),
             new CloseableOutputStream(hostOutputStream, closeLatch));
     TelnetConnection telnetConnection = new TelnetConnection(host, remote, processLauncher);
 
+    CountDownLatch scriptLatch = new CountDownLatch(2);
+    telnetConnection.setOnPostHostDataReceived((buffer, bytes) -> scriptLatch.countDown());
+
+    CountDownLatch remoteLatch = new CountDownLatch(1);
+    telnetConnection.setOnPostRemoteDataReceived((buffer, bytes) -> remoteLatch.countDown());
     // --------------------------------------------------------------------------------------------
     // ACT
     // --------------------------------------------------------------------------------------------
     telnetConnection.start();
 
-    // 3 lines from remote, release them all
-    remoteQueue.post(QueueMessage.create());
-    remoteQueue.post(QueueMessage.create());
-    remoteQueue.post(QueueMessage.create());
-    // release the line from host "you typed this"
+    // release the script lines
+    hostQueue.post(QueueMessage.create());
     hostQueue.post(QueueMessage.create());
 
     // wait for the script to launch
-    threadMessageQueue.get(Duration.ofSeconds(5));
+    assertThat(scriptLatch.await(5000, TimeUnit.MILLISECONDS)).isTrue();
+
+    // 1 lines from remote, release them all, so that it gets piped to the script
+    remoteQueue.post(QueueMessage.create());
+    assertThat(remoteLatch.await(5000, TimeUnit.MILLISECONDS)).isTrue();
 
     // release the process lines
     processQueue.post(QueueMessage.create());
@@ -303,13 +280,9 @@ public class TelnetConnectionTest {
     // ASSERT
     // --------------------------------------------------------------------------------------------
     assertThat(remoteOutputStream.toString())
-        .isEqualTo("you typed this\r\ncommands\r\nfrom the\r\nscript\r\n");
-    assertThat(hostOutputStream.toString())
-        .isEqualTo(
-            "Welcome to the BBS!\r\n"
-                + "Would you like to launch a script?\r\n"
-                + "#!script /tmp/test.sh\r\n");
-    assertThat(processOutputStream.toString()).isEmpty();
+        .isEqualTo("you typed this\r\n#!script /tmp/test.sh\r\ncommands\r\nfrom the\r\nscript\r\n");
+    assertThat(hostOutputStream.toString()).isEqualTo("Welcome to the BBS!\r\n");
+    assertThat(processOutputStream.toString()).isEqualTo("Welcome to the BBS!\r\n");
     verify(processLauncher)
         .start(argThat(processBuilder -> processBuilder.command().contains("/tmp/test.sh")));
   }

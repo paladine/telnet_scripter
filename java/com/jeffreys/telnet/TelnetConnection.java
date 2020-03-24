@@ -4,11 +4,13 @@ import static com.google.common.base.Preconditions.checkNotNull;
 import static com.google.common.base.Preconditions.checkState;
 import static com.jeffreys.telnet.Util.close;
 
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.flogger.FluentLogger;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.function.BiConsumer;
+import javax.annotation.Nullable;
 
 /**
  * Manages the host and remote socket connection, by bridging the data between them.
@@ -27,7 +29,11 @@ final class TelnetConnection {
   private final ScriptParser scriptParser = new ScriptParser(this::launchScript);
   private final ProcessLauncher processLauncher;
   private final Object processLock = new Object();
-  private Process process;
+  @Nullable private Process process = null;
+  // these exist primarily for unit test purposes
+  @Nullable private BiConsumer<byte[], Integer> onPostHostDataReceived = null;
+  @Nullable private BiConsumer<byte[], Integer> onPostRemoteDataReceived = null;
+  @Nullable private BiConsumer<byte[], Integer> onPostProcessDataReceived = null;
 
   TelnetConnection(
       CloseableStreamer host, CloseableStreamer remote, ProcessLauncher processLauncher) {
@@ -48,7 +54,7 @@ final class TelnetConnection {
             new OutputStreamForwardingThread(
                 host.getInputStream(),
                 remote.getOutputStream(),
-                (buffer, bytes) -> {},
+                this::onHostDataReceived,
                 this::shutdown));
     threads[1] =
         new Thread(
@@ -62,10 +68,38 @@ final class TelnetConnection {
     threads[1].start();
   }
 
+  @VisibleForTesting
+  void setOnPostHostDataReceived(BiConsumer<byte[], Integer> handler) {
+    this.onPostHostDataReceived = handler;
+  }
+
+  @VisibleForTesting
+  void setOnPostRemoteDataReceived(BiConsumer<byte[], Integer> handler) {
+    this.onPostRemoteDataReceived = handler;
+  }
+
+  @VisibleForTesting
+  void setOnPostProcessDataReceived(BiConsumer<byte[], Integer> handler) {
+    this.onPostProcessDataReceived = handler;
+  }
+
+  /**
+   * Called when host data is received.
+   *
+   * <p>It actively looks for #!script tags and launches scripts.
+   */
+  private void onHostDataReceived(byte[] buffer, int length) {
+    scriptParser.accept(buffer, length);
+
+    if (onPostHostDataReceived != null) {
+      onPostHostDataReceived.accept(buffer, length);
+    }
+  }
+
   /**
    * Called when remote data is received from the server.
    *
-   * <p>It actively looks for #!script tags and also passes this data to any executing script.
+   * <p>It forwards this data to any executing script.
    */
   private void onRemoteDataReceived(byte[] buffer, int length) {
     Process processValue;
@@ -86,8 +120,18 @@ final class TelnetConnection {
       }
     }
 
-    scriptParser.accept(buffer, length);
+    if (onPostRemoteDataReceived != null) {
+      onPostRemoteDataReceived.accept(buffer, length);
+    }
   }
+
+  /** Called when data from the script process is received. */
+  private void onProcessDataReceived(byte[] buffer, int length) {
+    if (onPostProcessDataReceived != null) {
+      onPostProcessDataReceived.accept(buffer, length);
+    }
+  }
+
 
   private void launchScript(String script) {
     synchronized (processLock) {
@@ -108,7 +152,7 @@ final class TelnetConnection {
                 new OutputStreamForwardingThread(
                     newProcess.getInputStream(),
                     remote.getOutputStream(),
-                    (buffer, bytes) -> {},
+                    this::onProcessDataReceived,
                     this::onProcessDied));
         threads[PROCESS_READ_THREAD_INDEX].start();
         process = newProcess;
