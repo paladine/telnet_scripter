@@ -97,6 +97,14 @@ public class ScriptParserTest {
   }
 
   @Test
+  public void emptyLaunchString_lotsofBackspacesWithDeletes_butWithSomething_launches() {
+    String str = "#!script \bWhatever\b\u007F\r\nYo there!";
+    parser.accept(str.getBytes(), str.length());
+
+    verify(mockLauncher).accept("Whatev");
+  }
+
+  @Test
   public void launchEventuallyOverflows() {
     String str =
         "#!script This is a really long long long long long long long long long line"

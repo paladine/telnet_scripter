@@ -1,5 +1,6 @@
 package com.jeffreys.telnet;
 
+import com.google.common.collect.ImmutableSet;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
@@ -7,6 +8,7 @@ import java.util.function.Consumer;
 final class ScriptParser implements BiConsumer<byte[], Integer> {
   private static final byte[] SCRIPT_LAUNCH_PREFIX = "#!script ".getBytes();
   private static final int MAX_PATH_LENGTH = 256;
+  private static final ImmutableSet<Byte> backspaceCharacters = ImmutableSet.of((byte) '\b', (byte) 0x7F);
 
   /** The {@link Consumer} to call when script text is identified. */
   private final Consumer<String> onLaunchScript;
@@ -54,7 +56,7 @@ final class ScriptParser implements BiConsumer<byte[], Integer> {
       }
       scriptStringBuilder = null;
       return;
-    } else if (b == '\b') {
+    } else if (backspaceCharacters.contains(b)) {
       if (scriptStringBuilder.length() > 0) {
         scriptStringBuilder.deleteCharAt(scriptStringBuilder.length() - 1);
       }
