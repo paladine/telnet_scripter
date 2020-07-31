@@ -38,7 +38,7 @@ public class IACFilter implements BiConsumer<byte[], Integer> {
     for (int i = 0; i < length; ++i) {
       accept(data[i]);
     }
-    
+
     flush();
   }
 
