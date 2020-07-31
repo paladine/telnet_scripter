@@ -54,14 +54,14 @@ final class TelnetConnection {
             new OutputStreamForwardingThread(
                 host.getInputStream(),
                 remote.getOutputStream(),
-                this::onHostDataReceived,
+                new IACFilter(this::onHostDataReceived),
                 this::shutdown));
     threads[1] =
         new Thread(
             new OutputStreamForwardingThread(
                 remote.getInputStream(),
                 host.getOutputStream(),
-                this::onRemoteDataReceived,
+                new IACFilter(this::onRemoteDataReceived),
                 this::shutdown));
 
     threads[0].start();
