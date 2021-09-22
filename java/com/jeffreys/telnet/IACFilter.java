@@ -21,7 +21,7 @@ public class IACFilter implements BiConsumer<byte[], Integer> {
     IACCommand,
     SBStart,
     SBValue,
-    SBIAC;
+    SBIAC
   }
 
   // large enough for an Ethernet jumbo frame

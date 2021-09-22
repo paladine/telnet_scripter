@@ -132,7 +132,6 @@ final class TelnetConnection {
     }
   }
 
-
   private void launchScript(String script) {
     synchronized (processLock) {
       if (process != null) {
@@ -188,7 +187,7 @@ final class TelnetConnection {
   }
 
   /** Reads from {@link #from} and forwards to {@link #to}. */
-  private class OutputStreamForwardingThread implements Runnable {
+  private static class OutputStreamForwardingThread implements Runnable {
     private final InputStream from;
     private final OutputStream to;
 

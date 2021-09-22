@@ -12,7 +12,9 @@ import org.junit.runners.JUnit4;
 
 @RunWith(JUnit4.class)
 public class ScriptParserTest {
+  @SuppressWarnings("unchecked") // Consumer -> Consumer<String>
   private final Consumer<String> mockLauncher = (Consumer<String>) mock(Consumer.class);
+
   private final ScriptParser parser = new ScriptParser(mockLauncher);
 
   @Test

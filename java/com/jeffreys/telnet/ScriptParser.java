@@ -8,7 +8,8 @@ import java.util.function.Consumer;
 final class ScriptParser implements BiConsumer<byte[], Integer> {
   private static final byte[] SCRIPT_LAUNCH_PREFIX = "#!script ".getBytes();
   private static final int MAX_PATH_LENGTH = 256;
-  private static final ImmutableSet<Byte> backspaceCharacters = ImmutableSet.of((byte) '\b', (byte) 0x7F);
+  private static final ImmutableSet<Byte> backspaceCharacters =
+      ImmutableSet.of((byte) '\b', (byte) 0x7F);
 
   /** The {@link Consumer} to call when script text is identified. */
   private final Consumer<String> onLaunchScript;

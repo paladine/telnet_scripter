@@ -85,7 +85,8 @@ public class TelnetConnectionTest {
     TestCloseableStreamer host =
         new TestCloseableStreamer(
             closeLatch,
-            new BlockingLineInputStream("you typed this\r\n#!script /tmp/test.sh\r\none more\r\n", hostQueue),
+            new BlockingLineInputStream(
+                "you typed this\r\n#!script /tmp/test.sh\r\none more\r\n", hostQueue),
             new CloseableOutputStream(hostOutputStream, closeLatch));
     TelnetConnection telnetConnection = new TelnetConnection(host, remote, processLauncher);
 
@@ -119,7 +120,8 @@ public class TelnetConnectionTest {
     // --------------------------------------------------------------------------------------------
     // ASSERT
     // --------------------------------------------------------------------------------------------
-    assertThat(remoteOutputStream.toString()).isEqualTo("you typed this\r\n#!script /tmp/test.sh\r\none more\r\n");
+    assertThat(remoteOutputStream.toString())
+        .isEqualTo("you typed this\r\n#!script /tmp/test.sh\r\none more\r\n");
     assertThat(hostOutputStream.toString())
         .isEqualTo(
             "Welcome to the BBS!\r\n"
@@ -153,21 +155,24 @@ public class TelnetConnectionTest {
     TestCloseableStreamer remote =
         new TestCloseableStreamer(
             closeLatch,
-            new BlockingLineInputStream("Welcome to the BBS!\r\n",remoteQueue),
+            new BlockingLineInputStream("Welcome to the BBS!\r\n", remoteQueue),
             new CloseableOutputStream(remoteOutputStream, closeLatch));
     TestCloseableStreamer host =
         new TestCloseableStreamer(
             closeLatch,
-            new BlockingLineInputStream("you typed this\r\n#!script /tmp/first.sh\r\n#!script /tmp/second.sh\r\n", hostQueue),
+            new BlockingLineInputStream(
+                "you typed this\r\n#!script /tmp/first.sh\r\n#!script /tmp/second.sh\r\n",
+                hostQueue),
             new CloseableOutputStream(hostOutputStream, closeLatch));
     TelnetConnection telnetConnection = new TelnetConnection(host, remote, processLauncher);
 
     CountDownLatch firstScriptLatch = new CountDownLatch(2);
     CountDownLatch secondScriptLatch = new CountDownLatch(3);
-    telnetConnection.setOnPostHostDataReceived((buffer, bytes) -> {
-      firstScriptLatch.countDown();
-      secondScriptLatch.countDown();
-    });
+    telnetConnection.setOnPostHostDataReceived(
+        (buffer, bytes) -> {
+          firstScriptLatch.countDown();
+          secondScriptLatch.countDown();
+        });
 
     // --------------------------------------------------------------------------------------------
     // ACT
@@ -197,7 +202,8 @@ public class TelnetConnectionTest {
     // --------------------------------------------------------------------------------------------
     // ASSERT
     // --------------------------------------------------------------------------------------------
-    assertThat(remoteOutputStream.toString()).isEqualTo("you typed this\r\n#!script /tmp/first.sh\r\n#!script /tmp/second.sh\r\n");
+    assertThat(remoteOutputStream.toString())
+        .isEqualTo("you typed this\r\n#!script /tmp/first.sh\r\n#!script /tmp/second.sh\r\n");
     assertThat(hostOutputStream.toString()).isEqualTo("Welcome to the BBS!\r\n");
     verify(processLauncher)
         .start(argThat(processBuilder -> processBuilder.command().contains("/tmp/first.sh")));
@@ -308,17 +314,17 @@ public class TelnetConnectionTest {
     }
 
     @Override
-    public void close() throws IOException {
+    public void close() {
       countDownLatch.countDown();
     }
 
     @Override
-    public InputStream getInputStream() throws IOException {
+    public InputStream getInputStream() {
       return inputStream;
     }
 
     @Override
-    public OutputStream getOutputStream() throws IOException {
+    public OutputStream getOutputStream() {
       return outputStream;
     }
   }
@@ -351,7 +357,7 @@ public class TelnetConnectionTest {
   }
 
   enum QueueAction {
-    RELEASE_LINE;
+    RELEASE_LINE
   }
 
   @AutoValue
@@ -406,12 +412,12 @@ public class TelnetConnectionTest {
     }
 
     @Override
-    public int read(byte[] dest, int offset, int len) throws IOException {
+    public int read(byte[] dest, int offset, int len) {
       throw new UnsupportedOperationException("not implemented");
     }
 
     @Override
-    public int read(byte[] dest) throws IOException {
+    public int read(byte[] dest) {
       try {
         while (true) {
           QueueMessage message = messageQueue.get();
